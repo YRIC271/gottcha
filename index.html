@@ -397,6 +397,7 @@
     <button class="btn btn-ghost" onclick="pflPrev()" id="pfl-btn-prev">&larr; Zur&uuml;ck</button>
     <button class="btn btn-secondary" onclick="pflNext()" id="pfl-btn-next">Weiter &rarr;</button>
   </div>
+  <button class="btn btn-ghost" style="font-size:.8rem" onclick="showScreen('screen-tutorial')">? Tutorial</button>
 </div>
 
 <!-- ═══ STATEMENTS ═══ -->
@@ -463,6 +464,10 @@
   <div class="stats-row">
     <div class="stat-box"><div class="stat-num" id="stat-answered">0</div><div class="stat-lbl">beantwortet</div></div>
     <div class="stat-box"><div class="stat-num" id="stat-total">0</div><div class="stat-lbl">Statements gesamt</div></div>
+  </div>
+  <div style="background:var(--accent)18;border:1px solid var(--accent)44;border-radius:10px;padding:10px 14px;font-size:.8rem;color:var(--text);display:flex;align-items:center;gap:10px">
+    <span style="font-size:1.1rem">💾</span>
+    <span>Dein Gottcha wird nur in diesem Browser gespeichert. <button onclick="exportProfile()" style="background:none;border:none;color:var(--accent);font-size:.8rem;cursor:pointer;padding:0;text-decoration:underline">Jetzt als Datei sichern</button></span>
   </div>
 <div class="card">
     <p class="label">Meine Bubble</p>
