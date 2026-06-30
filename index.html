@@ -107,6 +107,14 @@
   .profile-name{font-size:1.4rem;font-weight:700;}
   .profile-meta{font-size:.85rem;color:var(--muted);margin-top:2px;}
   .stats-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .saved-profile-card{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:border-color .15s;width:100%;text-align:left;}
+  .saved-profile-card:hover{border-color:var(--accent);}
+  .saved-profile-avatar{font-size:1.6rem;line-height:1;}
+  .saved-profile-info{flex:1;min-width:0;}
+  .saved-profile-name{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .saved-profile-date{font-size:.72rem;color:var(--muted);margin-top:2px;}
+  .saved-profile-del{font-size:1rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:6px;transition:color .15s;}
+  .saved-profile-del:hover{color:var(--danger);}
   .stat-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;}
   .stat-num{font-family:var(--mono);font-size:1.6rem;font-weight:700;color:var(--accent);}
   .stat-lbl{font-size:.75rem;color:var(--muted);margin-top:2px;}
@@ -230,19 +238,16 @@
     <p class="label" style="margin-bottom:6px">Gottcha empfangen</p>
     <p style="font-size:.9rem">Du hast ein Gottcha von <span class="iname" id="incoming-name">–</span> erhalten. Erstelle deins um den Vergleich zu sehen.</p>
   </div>
+  <div id="saved-profiles-section" style="display:none;flex-direction:column;gap:8px">
+    <p class="label">Gespeicherte Gottchas</p>
+    <div id="saved-profiles-items" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div style="height:4px"></div>
+  </div>
   <div style="display:flex;flex-direction:column;gap:10px">
     <button class="btn btn-primary" onclick="goToProfile()">Neues Gottcha erstellen</button>
-    <button class="btn btn-secondary" onclick="document.getElementById('load-file').click()">Gottcha laden</button>
+    <button class="btn btn-secondary" onclick="document.getElementById('load-file').click()">Aus Datei laden</button>
     <input type="file" id="load-file" accept=".gottcha,.json" onchange="loadProfile(event)">
     <button class="btn btn-ghost" onclick="showScreen('screen-tutorial')" style="font-size:.85rem">Noch kein Gottcha? Lern, wie es geht →</button>
-  </div>
-  <div id="resume-banner" class="card" style="display:none">
-    <p class="label">Fortsetzen</p>
-    <p style="font-size:.9rem;margin-bottom:12px">Du hast einen unfertigen Durchlauf.</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secondary btn-sm" onclick="resumeSession()">Weitermachen</button>
-      <button class="btn btn-ghost btn-sm" onclick="clearSession()">Verwerfen</button>
-    </div>
   </div>
 </div>
 
@@ -1094,6 +1099,65 @@ const TUT_PAGES      = 5;
 // STORAGE
 // ══════════════════════════════════════
 function saveToStorage(){ localStorage.setItem('gottcha_state', JSON.stringify(state)); }
+
+// ── INDEXEDDB (multi-profile list) ──
+const _LS_PROFILES='gottcha_profiles';
+function _getProfileList(){ try{ return JSON.parse(localStorage.getItem(_LS_PROFILES)||'[]'); }catch(e){ return []; } }
+function _setProfileList(list){ localStorage.setItem(_LS_PROFILES,JSON.stringify(list)); }
+function saveProfileToDB(){
+  if(!state.profile?.nickname) return;
+  const list=_getProfileList();
+  const idx=list.findIndex(p=>p.nickname===state.profile.nickname);
+  const entry={
+    nickname:state.profile.nickname,
+    avatar:state.profile.avatar||'🙂',
+    savedAt:Date.now(),
+    profile:state.profile,
+    answers:state.answers,
+    catOrder:state.catOrder||{},
+    mainBubbleOrder:state.mainBubbleOrder||null,
+    colors:{a:selectedA,b:selectedB}
+  };
+  if(idx>=0) list[idx]=entry; else list.push(entry);
+  _setProfileList(list);
+}
+function deleteProfileFromDB(nickname){
+  _setProfileList(_getProfileList().filter(p=>p.nickname!==nickname));
+  renderSavedProfiles();
+}
+function renderSavedProfiles(){
+  const profiles=_getProfileList().sort((a,b)=>b.savedAt-a.savedAt);
+  const sec=document.getElementById('saved-profiles-section');
+  const list=document.getElementById('saved-profiles-items');
+  if(!profiles.length){ sec.style.display='none'; return; }
+  sec.style.display='flex';
+  list.innerHTML='';
+  profiles.forEach(p=>{
+    const date=new Date(p.savedAt).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const card=document.createElement('button');
+    card.className='saved-profile-card';
+    card.innerHTML=`<span class="saved-profile-avatar">${p.avatar}</span>
+      <span class="saved-profile-info">
+        <div class="saved-profile-name">${p.nickname}</div>
+        <div class="saved-profile-date">Zuletzt gespeichert: ${date}</div>
+      </span>
+      <button class="saved-profile-del" onclick="event.stopPropagation();deleteProfileFromDB('${p.nickname.replace(/'/g,"\\'")}')">✕</button>`;
+    card.onclick=()=>loadProfileFromDB(p);
+    list.appendChild(card);
+  });
+}
+function loadProfileFromDB(p){
+  state.profile=p.profile;
+  state.answers=p.answers;
+  state.catOrder=p.catOrder||{};
+  state.mainBubbleOrder=p.mainBubbleOrder||null;
+  state.currentIndex=Object.keys(p.answers).length;
+  state.shuffledOrder=buildOrder(state.sortMode||'Zufall');
+  if(p.colors?.a && p.colors?.b) applyColors(p.colors.a, p.colors.b);
+  saveToStorage();
+  if(incomingProfile) showScreen('screen-compare'); else showScreen('screen-my-profile');
+  toast('Profil geladen ✓');
+}
 function loadFromStorage(){
   const raw = localStorage.getItem('gottcha_state');
   if(raw){ try{ state=JSON.parse(raw); return true; }catch(e){} } return false;
@@ -1230,8 +1294,6 @@ function initStart(){
   }
   if(loadFromStorage()&&state.profile){
     if(!state.shuffledOrder||!state.shuffledOrder.length) state.shuffledOrder=buildOrder(state.sortMode||'Zufall');
-    document.getElementById('resume-banner').style.display='block';
-
     if(incomingProfile) setTimeout(()=>showScreen('screen-compare'),400);
   }
   buildExpiryChips();
@@ -1435,7 +1497,7 @@ function saveEditProfile(){
     city:document.getElementById('ep-city').value.trim(),
     bio:document.getElementById('ep-bio').value.trim(),
     free:document.getElementById('ep-free').value.trim()};
-  saveToStorage(); toast('Steckbrief gespeichert ✓'); showScreen('screen-my-profile');
+  saveToStorage(); saveProfileToDB(); toast('Steckbrief gespeichert ✓'); showScreen('screen-my-profile');
 }
 
 // CAT PRIVACY
@@ -1552,7 +1614,7 @@ function nextStatement(){
   const stmt=currentStmt();
   if(state.selectedScale!==null) state.answers[stmt.id]=state.selectedScale;
   saveToStorage();
-  if(state.currentIndex>=REGULAR_STATEMENTS.length-1){ showScreen('screen-my-profile'); return; }
+  if(state.currentIndex>=REGULAR_STATEMENTS.length-1){ saveProfileToDB(); showScreen('screen-my-profile'); return; }
   state.currentIndex++; state.selectedScale=null; renderStatement();
 }
 function prevStatement(){
@@ -2242,18 +2304,19 @@ function exportEnthaltungen(){
   a.click();
 }
 
+function _downloadBlob(data, filename){
+  const blob=new Blob([data],{type:'application/octet-stream'});
+  if(navigator.msSaveBlob){ navigator.msSaveBlob(blob,filename); return; }
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 function exportProfile(){
   const colors={a:selectedA,b:selectedB};
   const data=JSON.stringify({v:CURRENT_VERSION,profile:state.profile,answers:state.answers,catOrder:state.catOrder||{},mainBubbleOrder:state.mainBubbleOrder||null,colors},null,2);
-  const filename=(state.profile?.nickname||'profil')+'.gottcha';
-  if(navigator.msSaveBlob){
-    navigator.msSaveBlob(new Blob([data],{type:'application/octet-stream'}),filename);
-  } else {
-    const uri='data:application/octet-stream;charset=utf-8,'+encodeURIComponent(data);
-    const a=document.createElement('a');
-    a.href=uri; a.download=filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  }
+  _downloadBlob(data,(state.profile?.nickname||'profil')+'.gottcha');
   toast('Gespeichert ✓');
 }
 function migrateAnswers(oldAnswers){
@@ -2291,7 +2354,7 @@ function loadProfile(e){
         if(data.colors?.a && data.colors?.b) applyColors(data.colors.a, data.colors.b);
         state.currentIndex=Object.keys(state.answers).length;
         state.shuffledOrder=buildOrder(state.sortMode||'Zufall');
-        saveToStorage();
+        saveToStorage(); saveProfileToDB();
         if(incomingProfile){
           showScreen('screen-compare');
         } else {
@@ -2350,11 +2413,9 @@ function beendenQuit(){
   showScreen('screen-start');
 }
 function beendenSaveAndQuit(){
-  const data=JSON.stringify({v:1,profile:state.profile,answers:state.answers,catOrder:state.catOrder||{},mainBubbleOrder:state.mainBubbleOrder||null},null,2);
-  const blob=new Blob([data],{type:'application/octet-stream'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=(state.profile?.nickname||'profil')+'.gottcha';document.body.appendChild(a);a.click();document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const colors={a:selectedA,b:selectedB};
+  const data=JSON.stringify({v:CURRENT_VERSION,profile:state.profile,answers:state.answers,catOrder:state.catOrder||{},mainBubbleOrder:state.mainBubbleOrder||null,colors},null,2);
+  _downloadBlob(data,(state.profile?.nickname||'profil')+'.gottcha');
   setTimeout(()=>{
     clearSession();
     localStorage.removeItem('gottcha_incoming');
@@ -2381,6 +2442,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   loadPalette();
   checkIncomingLink();
   initStart();
+  // migrate existing localStorage profile into IndexedDB on first load
+  if(state.profile?.nickname) saveProfileToDB();
+  renderSavedProfiles();
 });
 const _showScreen=showScreen;
 window.showScreen=function(id){
